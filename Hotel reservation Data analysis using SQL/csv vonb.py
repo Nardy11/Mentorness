@@ -1,22 +1,57 @@
-import pandas as pd
+"""Turn the hotel reservation CSV into SQL INSERT statements for the HotelReservations table.
+
+Usage:
+    python "csv vonb.py" "Hotel Reservation Dataset.csv" > inserts.sql
+    python "csv vonb.py" data.csv --limit 700 -o inserts.sql
+
+The CSV stores arrival_date as DD-MM-YYYY; it is written as MM-DD-YYYY so that
+SQL Server parses it as a DATE with its default (us_english) settings.
+"""
+import argparse
+import sys
 from datetime import datetime
 
-# Load the dataset
-file_path = 'C:/Users/Nardi/Downloads/Hotel Reservation Dataset.csv'
-hotel_data = pd.read_csv(file_path)
+import pandas as pd
 
-# Function to switch day and month in the date
+
 def switch_day_month(date_str):
-    date_obj = datetime.strptime(date_str, '%d-%m-%Y')
-    return date_obj.strftime('%m-%d-%Y')
+    """DD-MM-YYYY -> MM-DD-YYYY."""
+    return datetime.strptime(date_str, "%d-%m-%Y").strftime("%m-%d-%Y")
 
-# Generate SQL insert statements
-insert_statements = []
-for index, row in hotel_data.iterrows():
-    arrival_date_switched = switch_day_month(row['arrival_date'])
-    insert_statements.append(f"INSERT INTO HotelReservations VALUES ('{row['Booking_ID']}', {row['no_of_adults']}, {row['no_of_children']}, {row['no_of_weekend_nights']}, {row['no_of_week_nights']},
-     '{row['type_of_meal_plan']}', '{row['room_type_reserved']}', {row['lead_time']}, '{arrival_date_switched}', '{row['market_segment_type']}', {row['avg_price_per_room']}, '{row['booking_status']}');")
 
-# Output a few insert statements to verify
-for statement in insert_statements[:700]:  # Adjusted to 5 for demonstration, you can set it back to 701
-    print(statement)
+def sql_str(value):
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def to_insert(row):
+    return (
+        "INSERT INTO HotelReservations VALUES ("
+        f"{sql_str(row['Booking_ID'])}, {row['no_of_adults']}, {row['no_of_children']}, "
+        f"{row['no_of_weekend_nights']}, {row['no_of_week_nights']}, {sql_str(row['type_of_meal_plan'])}, "
+        f"{sql_str(row['room_type_reserved'])}, {row['lead_time']}, {sql_str(switch_day_month(row['arrival_date']))}, "
+        f"{sql_str(row['market_segment_type'])}, {row['avg_price_per_room']}, {sql_str(row['booking_status'])});"
+    )
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("csv_path", help="path to the hotel reservation CSV")
+    parser.add_argument("-o", "--output", help="write to this file instead of stdout")
+    parser.add_argument("--limit", type=int, help="only convert the first N rows")
+    args = parser.parse_args()
+
+    hotel_data = pd.read_csv(args.csv_path)
+    if args.limit:
+        hotel_data = hotel_data.head(args.limit)
+    lines = [to_insert(row) for _, row in hotel_data.iterrows()]
+
+    out = open(args.output, "w", encoding="utf-8") if args.output else sys.stdout
+    try:
+        out.write("\n".join(lines) + "\n")
+    finally:
+        if args.output:
+            out.close()
+
+
+if __name__ == "__main__":
+    main()
